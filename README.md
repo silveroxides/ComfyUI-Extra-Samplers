@@ -8,6 +8,9 @@
 * LCM Custom Noise (Supports different types of noise other than generic gaussian)
 * DPMPP 3M SDE with Dynamic ETA (Anneals down towards a minimum eta via a cosine curve)
 * Supreme (Many extra functionalities and step methods available)
+* SENS (SDE-Endowed Nimble Sampler. Based off of DPM-Solver++(2M) SDE and DPM-Solver++(3M) SDE. R-SDE for reversible SDE, T-SDE for tertiary SDE.)
+* IPNDM VAPP (IPNDM_V with ancestral sampling and (somewhat) CFGPP)
+* STRIKE (Stochastic, Temporal, Reversible, Improvised K-Diffusion Experiment. Based off of Euler A with an ancestral and SDE twist.)
 
 ### Currently included extra K-Sampling nodes:
 * SamplerCustomNoise (Supports custom noises other than gaussian noise for init noise)
@@ -18,6 +21,14 @@
 * GeometricCFGGuider: Samples the two conditionings, then blends between them using a user-chosen alpha.
 * ScaledCFGGuider: Samples the two conditionings, then adds it using a method similar to "Add Trained Difference" from merging models.
 * ImageAssistedCFGGuider: Samples the conditioning, then adds in the latent image using vector projection onto the CFG. Image latent ought to be of the same size as the diffusion latent.
+
+### Currently included extra schedulers:
+* SimpleExponentialScheduler: Using Simple scheduler as a base, apply an exponential decay. (Works with ZSNR)
+* KLOptimalScheduler: KL Optimal/'Gaussian' scheduler, may be good at low step counts.
+* SimpleKLOptimalScheduler: KL Optimal/'Gaussian' scheduler, but using Simple scheduler as a base to work off of. (Works with ZSNR)
+
+### Currently included extra noise types:
+* Immiscible Noise: Aligns the noise with the given image latent. For ancestral sampling, we utilize `cond_denoised` as the reference image latent.
 
 #### Supreme Sampler features:
 * step_method: You have the ability to choose your own step method with this sampler! Optionally, there's a dynamic step method, which chooses the appropriate order based on the calculated error between steps, allowing you to obtain higher quality when it matters in the sampling process. Defaults to **(Euler)**.
