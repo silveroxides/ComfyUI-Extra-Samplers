@@ -15,6 +15,8 @@ NODE_CLASS_MAPPINGS = {
     "ScaledCFGGuider": nodes.ScaledCFGGuider,
     "WarmupDecayCFGGuider": nodes.WarmupDecayCFGGuider,
     "MegaCFGGuider": nodes.MegaCFGGuider,
+    ### Noise
+    "ImmiscibleNoise": nodes.ImmiscibleNoise,
     ## Samplers
     "SamplerRES_Momentumized": nodes.SamplerRES_MOMENTUMIZED,
     "SamplerDPMPP_DualSDE_Momentumized": nodes.SamplerDPMPP_DUALSDE_MOMENTUMIZED,
@@ -24,7 +26,12 @@ NODE_CLASS_MAPPINGS = {
     "SamplerEulerAncestralDancing_Experimental": nodes.SamplerEULER_ANCESTRAL_DANCING,
     "SamplerDPMPP_3M_SDE_DynETA": nodes.SamplerDPMPP_3M_SDE_DYN_ETA,
     "SamplerSupreme": nodes.SamplerSUPREME,
+    "SamplerSENS": nodes.SamplerSENS,
+    "SamplerIPNDM_VAPP": nodes.SamplerIPNDM_VAPP,
+    "SamplerSTRIKE": nodes.SamplerSTRIKE,
     ### Schedulers
     "SimpleExponentialScheduler": nodes.SimpleExponentialScheduler,
+    "KLOptimalScheduler": nodes.KLOptimalScheduler,
+    "SimpleKLOptimalScheduler": nodes.SimpleKLOptimalScheduler,
 }
 __all__ = ['NODE_CLASS_MAPPINGS']

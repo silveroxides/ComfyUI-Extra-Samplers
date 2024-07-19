@@ -1,5 +1,5 @@
 from .other_samplers.refined_exp_solver import sample_refined_exp_s
-from .extra_samplers import get_noise_sampler_names, prepare_noise
+from .extra_samplers import get_noise_sampler_names, get_immiscible_noise_sampler_names, prepare_noise, make_immiscible
 
 import comfy.samplers
 import comfy.sample
@@ -11,6 +11,7 @@ import latent_preview
 import torch
 import math
 from tqdm.auto import trange
+import numpy as np
 
 import kornia
 
@@ -156,19 +157,25 @@ class SamplerSUPREME:
         NOISE_MODULATION_TYPES=["none", "intensity", "frequency", "spectral_signum"]
         return {"required":
                     {"noise_sampler_type": (get_noise_sampler_names(),),
-                     "step_method": (STEP_METHODS, ),
-                     "substep_method": (SUBSTEP_METHODS, ),
+                     "step_method": (STEP_METHODS, {"default": "euler"}),
+                     "substep_method": (SUBSTEP_METHODS, {"default": "euler"}),
+                     "warmup_method": (SUBSTEP_METHODS, {"default": "euler"}),
                      "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
-                     "centralization": ("FLOAT", {"default": 0.02, "min": -1.0, "max": 1.0, "step":0.01}),
-                     "normalization": ("FLOAT", {"default": 0.01, "min": -1.0, "max": 1.0, "step":0.01}),
-                     "edge_enhancement": ("FLOAT", {"default": 0.05, "min": -100.0, "max": 100.0, "step":0.01}),
-                     "perphist": ("FLOAT", {"default": 0, "min": -5.0, "max": 5.0, "step":0.01}),
+                     "centralization": ("FLOAT", {"default": 0.00, "min": -1.0, "max": 1.0, "step":0.01}),
+                     "normalization": ("FLOAT", {"default": 0.00, "min": -1.0, "max": 1.0, "step":0.01}),
+                     "edge_enhancement": ("FLOAT", {"default": 0.00, "min": -100.0, "max": 100.0, "step":0.01}),
+                     "perphist": ("FLOAT", {"default": 0.25, "min": -1.0, "max": 1.0, "step":0.01}),
                      "substeps": ("INT", {"default": 2, "min": 1, "max": 100, "step":1}),
                      "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
-                     "noise_modulation": (NOISE_MODULATION_TYPES, {"default": "intensity"}),
-                     "modulation_strength": ("FLOAT", {"default": 2.0, "min": -100.0, "max": 100.0, "step":0.01}),
+                     "noise_modulation": (NOISE_MODULATION_TYPES, {"default": "none"}),
+                     "modulation_strength": ("FLOAT", {"default": 2., "min": -100.0, "max": 100.0, "step":0.01}),
                      "modulation_dims": ("INT", {"default": 3, "min": 1, "max": 3, "step":1}),
                      "reversible_eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "dyneta": ("BOOLEAN", {"default": True}),
+                     "reversible_dyneta": ("BOOLEAN", {"default": True}),
+                     "enable_free_reverse": ("BOOLEAN", {"default": True}),
+                     "free_reverse_eta": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "free_reverse_dyneta": ("BOOLEAN", {"default": True}),
                       }
                }
     RETURN_TYPES = ("SAMPLER",)
@@ -176,9 +183,122 @@ class SamplerSUPREME:
 
     FUNCTION = "get_sampler"
 
-    def get_sampler(self, noise_sampler_type, step_method, substep_method, eta, centralization, normalization, edge_enhancement, perphist, substeps, noise_modulation, modulation_strength, modulation_dims, reversible_eta, s_noise):
-        sampler = comfy.samplers.ksampler("supreme", {"noise_sampler_type": noise_sampler_type, "step_method": step_method, "eta": eta, "centralization": centralization, "normalization": normalization, "edge_enhancement": edge_enhancement, "perphist": perphist, "substeps": substeps, "substep_method": substep_method, "noise_modulation": noise_modulation, "modulation_strength": modulation_strength, "modulation_dims": modulation_dims, "reversible_eta": reversible_eta, "s_noise": s_noise})
+    def get_sampler(self, noise_sampler_type, step_method, substep_method, warmup_method, eta, centralization, normalization, edge_enhancement, perphist, substeps, noise_modulation, modulation_strength, modulation_dims, reversible_eta, dyneta, reversible_dyneta, enable_free_reverse, free_reverse_eta, free_reverse_dyneta, s_noise):
+        sampler = comfy.samplers.ksampler("supreme", {"noise_sampler_type": noise_sampler_type, "step_method": step_method, "eta": eta, "centralization": centralization, "normalization": normalization, "edge_enhancement": edge_enhancement, "perphist": perphist, "substeps": substeps, "substep_method": substep_method, "warmup_method": warmup_method, "noise_modulation": noise_modulation, "modulation_strength": modulation_strength, "modulation_dims": modulation_dims, "reversible_eta": reversible_eta, "dyneta": dyneta, "reversible_dyneta": reversible_dyneta, "enable_free_reverse": enable_free_reverse, "free_reverse_eta": free_reverse_eta, "free_reverse_dyneta": free_reverse_dyneta, "s_noise": s_noise})
         return (sampler, )
+
+# SENS
+class SamplerSENS:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="brownian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "rsde_eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "tsde_eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, rsde_eta, tsde_eta, s_noise):
+        sampler = comfy.samplers.ksampler("sens", {"noise_sampler_type": noise_sampler_type, "eta": eta, "rsde_eta": rsde_eta, "tsde_eta": tsde_eta, "s_noise": s_noise})
+        return (sampler, )
+
+# IPNDM_V Ancestral CFG++
+class SamplerIPNDM_VAPP:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="brownian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "max_order": ("INT", {"default": 4, "min": 1, "max": 4, "step":1}),
+                     "pp_guidance": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, max_order, pp_guidance):
+        sampler = comfy.samplers.ksampler("ipndm_vapp", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "max_order": max_order, "pp_guidance": pp_guidance})
+        return (sampler, )
+
+# STRIKE (Stochastic Temporal Reversible Improvised K-Diffusion Experiment)
+class SamplerSTRIKE:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "order": ("INT", {"default": 3, "min": 1, "max": 3, "step":1}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, order):
+        sampler = comfy.samplers.ksampler("STRIKE", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "order": order})
+        return (sampler, )
+
+### Noise
+
+class Noise_ImmiscibleNoise:
+    def __init__(self, noise_type, seed, image_scaling, latent_image):
+        self.noise_type = noise_type
+        self.seed = seed
+        self.image_scaling = image_scaling
+        self.latent_image = latent_image
+
+    def generate_noise(self, input_latent):
+        latent_image = input_latent["samples"]
+        batch_inds = input_latent["batch_index"] if "batch_index" in input_latent else None
+        generator = torch.manual_seed(self.seed)
+        if batch_inds is None:
+            gauss = torch.randn_like(latent_image)
+            noise = make_immiscible(noise_func=self.noise_type)(latent_image if self.latent_image is None else self.latent_image["samples"])
+            noise = gauss * (1.0 - self.image_scaling) + noise * self.image_scaling
+            return noise
+            #return torch.randn(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout, generator=generator, device="cpu")
+        
+        unique_inds, inverse = np.unique(batch_inds, return_inverse=True)
+        noises = []
+        for i in range(unique_inds[-1]+1):
+            gauss = torch.randn_like(latent_image)
+            noise = make_immiscible(noise_func=self.noise_type)(latent_image if self.latent_image is None else self.latent_image["samples"])
+            noise = gauss * (1.0 - self.image_scaling) + noise * self.image_scaling
+            if i in unique_inds:
+                noises.append(noise)
+        noises = [noises[i] for i in inverse]
+        noises = torch.cat(noises, axis=0)
+        return noises
+
+from comfy_extras.nodes_custom_sampler import DisableNoise
+class ImmiscibleNoise(DisableNoise):
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {
+                    "noise_type": (get_immiscible_noise_sampler_names(), ),
+                    "noise_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                    },
+                "optional":
+                    {
+                    "image_scaling": ("FLOAT", {"default": 1.0, "min": -1000.0, "max": 1000.0, "step":0.01, "round": 0.001}),
+                    "latent_image": ("LATENT", ),
+                    }
+                }
+
+    def get_noise(self, noise_type, noise_seed, image_scaling, latent_image):
+        return (Noise_ImmiscibleNoise(noise_type, noise_seed, image_scaling, latent_image),)
 
 ### Schedulers
 from .extra_samplers import get_sigmas_simple_exponential
@@ -192,7 +312,7 @@ class SimpleExponentialScheduler:
                       }
                }
     RETURN_TYPES = ("SIGMAS",)
-    CATEGORY = "clybNodes/schedulers"
+    CATEGORY = "sampling/custom_sampling/schedulers"
 
     FUNCTION = "get_sigmas"
 
@@ -202,6 +322,54 @@ class SimpleExponentialScheduler:
             total_steps = int(steps/denoise)
 
         sigmas = get_sigmas_simple_exponential(model.model, total_steps).cpu()
+        sigmas = sigmas[-(steps + 1):]
+        return (sigmas, )
+
+from .extra_samplers import get_sigmas_simple_kl_optimal
+class SimpleKLOptimalScheduler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"model": ("MODEL",),
+                     "steps": ("INT", {"default": 20, "min": 1, "max": 10000}),
+                     "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SIGMAS",)
+    CATEGORY = "sampling/custom_sampling/schedulers"
+
+    FUNCTION = "get_sigmas"
+
+    def get_sigmas(self, model, steps, denoise):
+        total_steps = steps
+        if denoise < 1.0:
+            total_steps = int(steps/denoise)
+
+        sigmas = get_sigmas_simple_kl_optimal(model.model, total_steps).cpu()
+        sigmas = sigmas[-(steps + 1):]
+        return (sigmas, )
+
+from .extra_samplers import get_sigmas_kl_optimal
+class KLOptimalScheduler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"model": ("MODEL",),
+                     "steps": ("INT", {"default": 20, "min": 1, "max": 10000}),
+                     "denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SIGMAS",)
+    CATEGORY = "sampling/custom_sampling/schedulers"
+
+    FUNCTION = "get_sigmas"
+
+    def get_sigmas(self, model, steps, denoise):
+        total_steps = steps
+        if denoise < 1.0:
+            total_steps = int(steps/denoise)
+
+        sigmas = get_sigmas_kl_optimal(model.model, total_steps).cpu()
         sigmas = sigmas[-(steps + 1):]
         return (sigmas, )
 
@@ -730,15 +898,20 @@ class WarmupDecayCFGGuider:
         return (guider,)
 
 class Guider_MegaCFG(comfy.samplers.CFGGuider):
-    def set_cfg(self, model, cfg_max, cfg_min, warmup_percent, mean_cfg):
+    def set_cfg(self, model, cfg_max, cfg_min, warmup_percent, mean_cfg, vector_rejection_scale):
         self.model = model
         self.cfg_max = cfg_max
         self.cfg_min = cfg_min
         self.warmup_percent = warmup_percent
         self.mean_cfg = mean_cfg
 
+        self.vector_rejection_scale = vector_rejection_scale
+
         self.prev_cond = None
         self.prev_cfg = None
+        
+        self.cond_result = None
+        self.cfg_result = None
 
     def set_conds(self, positive, negative):
         self.inner_set_conds({"positive": positive, "negative": negative})
@@ -748,6 +921,17 @@ class Guider_MegaCFG(comfy.samplers.CFGGuider):
         self.image_weighting = image_weighting
         self.weight_scaling = weight_scaling
         self.latent_image = latent_image
+    
+    def set_perphist_params(self, perphist):
+        self.perphist = perphist
+    
+    def perpadd(self, denoised_tensor, old_denoised_tensor, x, alpha):
+        a_diff = x - (denoised_tensor - x)
+        b_diff = x - (old_denoised_tensor - x)
+        a_ortho = a_diff * (a_diff / torch.linalg.norm(a_diff) * (b_diff / torch.linalg.norm(a_diff))).sum()
+        b_perp = b_diff - a_ortho
+        res = denoised_tensor + alpha * b_perp
+        return res
 
     def post_cfg_reference_img(self, args):
         model = args["model"]
@@ -776,6 +960,24 @@ class Guider_MegaCFG(comfy.samplers.CFGGuider):
                 weight = ((-torch.cos((sigma / sigma_max) * math.pi) / 2) + 0.5)[:, None, None, None].clone()
 
         return cfg_result + (cond_pred - ref) * self.image_guidance * (weight**self.weight_scaling)
+    
+    def post_cfg_perphist(self, args):
+        noise_pred = args["denoised"]
+        if self.prev_cfg != None:
+            noise_pred = self.perpadd(noise_pred, self.prev_cfg, args["input"], self.perphist)
+        self.prev_cfg = args["denoised"]
+        return noise_pred
+    
+    def vect_rej(self, conditioning, unconditioning, x_input):
+        def rej(a, b):
+            """
+            Implements vector rejection for alternative diffusion.
+            """
+            return a - b * torch.tensordot(a, b, dims=4) / torch.tensordot(b, b, dims=4)
+        cond_ind_pred = conditioning - x_input
+        neg_ind_pred = unconditioning - x_input
+        noise_pred = rej(cond_ind_pred, neg_ind_pred) + (rej(x_input, cond_ind_pred) - rej(x_input, neg_ind_pred))
+        return noise_pred
 
     def predict_noise(self, x, timestep, model_options={}, seed=None):
         negative_cond = self.conds.get("negative", None)
@@ -802,12 +1004,14 @@ class Guider_MegaCFG(comfy.samplers.CFGGuider):
             cfg_cos = (1 + -torch.cos((timestep / percent_sigma) * math.pi))
             mod_cfg = cfg_scale * cfg_cos + self.cfg_min
 
+        if self.vector_rejection_scale != 0:
+            out[1] += self.vect_rej(out[1], out[0], x) * self.vector_rejection_scale
+
         cfg = comfy.samplers.cfg_function(self.inner_model, out[1], out[0], mod_cfg, x, timestep, model_options=model_options, cond=positive_cond, uncond=negative_cond)
 
         if self.mean_cfg != 0:
             cfg += out0_mean + (out1_mean - out0_mean) * self.mean_cfg
 
-        self.prev_cfg = cfg
         self.prev_cond = out[1]
 
         return cfg
@@ -823,6 +1027,8 @@ class MegaCFGGuider:
                     "cfg_min": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
                     "warmup_percent": ("FLOAT", {"default": 0.5, "min": 0.01, "max": 1.0, "step":0.01, "round": 0.001}),
                     "mean_cfg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
+                    "perphist": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step":0.01, "round": 0.001}),
+                    "vector_rejection_scale": ("FLOAT", {"default": 0.0, "min": -0.5, "max": 5.0, "step":0.001, "round": 0.0001}),
                      },
                 "optional":
                     {
@@ -838,13 +1044,17 @@ class MegaCFGGuider:
     FUNCTION = "get_guider"
     CATEGORY = "sampling/custom_sampling/guiders"
 
-    def get_guider(self, model, positive, negative, cfg_max, cfg_min, warmup_percent, mean_cfg,
+    def get_guider(self, model, positive, negative, cfg_max, cfg_min, warmup_percent, mean_cfg, perphist, vector_rejection_scale,
                     image_guidance, image_weighting, weight_scaling, latent_image = None):
-        m = model.clone()
+        copy_model = perphist != 0 or latent_image != 0
+        m = model.clone() if copy_model else model
         guider = Guider_MegaCFG(m)
         guider.set_conds(positive, negative) # Conds
-        guider.set_cfg(m, cfg_max, cfg_min, warmup_percent, mean_cfg) # Strengths
+        guider.set_cfg(m, cfg_max, cfg_min, warmup_percent, mean_cfg, vector_rejection_scale) # Strengths
         if latent_image != None:
             guider.set_img_cfg(image_guidance, image_weighting, weight_scaling, latent_image)
             m.set_model_sampler_post_cfg_function(guider.post_cfg_reference_img)
+        if perphist != 0:
+            guider.set_perphist_params(perphist)
+            m.set_model_sampler_post_cfg_function(guider.post_cfg_perphist)
         return (guider,)
