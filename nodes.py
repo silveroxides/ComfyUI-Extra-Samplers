@@ -229,15 +229,15 @@ class SamplerIPNDM_VAPP:
         sampler = comfy.samplers.ksampler("ipndm_vapp", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "max_order": max_order, "pp_guidance": pp_guidance})
         return (sampler, )
 
-# STRIKE (Stochastic Temporal Reversible Improvised K-Diffusion Experiment)
-class SamplerSTRIKE:
+# SHIDS (Stochastic Historical Improvised Sampling)
+class SamplerSHIDS:
     @classmethod
     def INPUT_TYPES(s):
         return {"required":
                     {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
                      "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
                      "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
-                     "order": ("INT", {"default": 3, "min": 1, "max": 3, "step":1}),
+                     "order": ("INT", {"default": 16, "min": 1, "max": 100, "step":1}),
                       }
                }
     RETURN_TYPES = ("SAMPLER",)
@@ -246,7 +246,7 @@ class SamplerSTRIKE:
     FUNCTION = "get_sampler"
 
     def get_sampler(self, noise_sampler_type, eta, s_noise, order):
-        sampler = comfy.samplers.ksampler("STRIKE", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "order": order})
+        sampler = comfy.samplers.ksampler("SHIDS", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "order": order})
         return (sampler, )
 
 ### Noise

@@ -28,7 +28,7 @@ NODE_CLASS_MAPPINGS = {
     "SamplerSupreme": nodes.SamplerSUPREME,
     "SamplerSENS": nodes.SamplerSENS,
     "SamplerIPNDM_VAPP": nodes.SamplerIPNDM_VAPP,
-    "SamplerSTRIKE": nodes.SamplerSTRIKE,
+    "SamplerSHIDS": nodes.SamplerSHIDS,
     ### Schedulers
     "SimpleExponentialScheduler": nodes.SimpleExponentialScheduler,
     "KLOptimalScheduler": nodes.KLOptimalScheduler,

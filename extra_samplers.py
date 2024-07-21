@@ -1462,22 +1462,22 @@ def sampler_ipndm_vapp(model, x, sigmas, extra_args=None, callback=None, disable
     return x_next
 
 @torch.no_grad()
-def sample_ipndm_vapp(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., max_order=4, noise_sampler_type="brownian", noise_sampler=None, pp_guidance=1.0):
+def sample_ipndm_vapp(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., max_order=4, noise_sampler_type="gaussian", noise_sampler=None, pp_guidance=1.0):
     if len(sigmas) <= 1:
         return x
     noise_sampler, extra_args = check_set_immiscible(x, noise_sampler_type, extra_args)
     return sampler_ipndm_vapp(model, x, sigmas, extra_args=extra_args, callback=callback, disable=disable, eta=eta, s_noise=s_noise, max_order=max_order, noise_sampler=noise_sampler if noise_sampler is not None else get_noise_sampler(x, sigmas, noise_sampler_type, noise_sampler, extra_args), pp_guidance=pp_guidance)
 
 @torch.no_grad()
-def sampler_STRIKE(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., noise_sampler=None, order=3):
-    """Full ancestral sampling with STRIKE (Stochastic/Temporal, Reversible, and Improvised K-Diffusion Experiment) steps."""
+def sampler_SHIDS(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., noise_sampler=None, order=16):
+    """Full ancestral sampling with SHIDS (Stochastic, Historical, Improvised Sampling) steps."""
     extra_args = {} if extra_args is None else extra_args
     noise_sampler = default_noise_sampler(x) if noise_sampler is None else noise_sampler
 
-    temp = [0]
+    temp_uncond = [0]
     temp_cond = [0]
     def post_cfg_function(args):
-        temp[0] = args["uncond_denoised"]
+        temp_uncond[0] = args["uncond_denoised"]
         temp_cond[0] = args["cond_denoised"]
         return args["denoised"]
 
@@ -1488,33 +1488,67 @@ def sampler_STRIKE(model, x, sigmas, extra_args=None, callback=None, disable=Non
     old_uncond, old_uncond_2 = None, None
     old_cond, old_cond_2 = None, None
     old_dt, old_dt_2 = None, None
+
+    buffer_model_cond = []
+    buffer_model_uncond = []
+    buffer_model_dt = []
     for i in trange(len(sigmas) - 1, disable=disable):
         denoised = model(x, sigmas[i] * s_in, **extra_args)
         sigma_down, sigma_up = get_ancestral_step(sigmas[i], sigmas[i + 1], eta=eta)
         if callback is not None:
             callback({'x': x, 'i': i, 'sigma': sigmas[i], 'sigma_hat': sigmas[i], 'denoised': denoised})
-        d = to_d(x, sigmas[i], temp[0])
-        d_2 = to_d(x, sigmas[i], temp_cond[0])
+        d_step = to_d(x, sigmas[i], denoised)
+        d = to_d(x, sigmas[i], temp_uncond[0])
+        #d_2 = to_d(x, sigmas[i], temp_cond[0])
         # Euler method
-        dt = sigma_down - sigmas[i]
-        x = denoised + d * dt - d_2 * dt
-        if old_uncond is not None and old_cond is not None and order >= 2:
-            x = x + (old_cond - old_uncond) / (old_dt / dt)
-        if old_uncond_2 is not None and old_cond_2 is not None and order >= 3:
-            x = x + (old_cond_2 - old_uncond_2) / (old_dt_2 / old_dt) / (old_dt / dt)
+        dt = sigma_down - sigmas[i] # Time Difference between now and next step (negative)
+        x_full = denoised + d_step * sigma_down
+        x_step = denoised + d * sigma_down
+
+        # Project denoised onto a line between (primarily) x_step (cfgpp), and x_full (normal cfg)
+        ba = x_step - denoised
+        ca = x_full - denoised
+        alpha = (ba * ca) / (ba ** 2 + 1e-8)
+        x = (1 - alpha)*denoised + alpha*x_step
+
+        for iteration in range(len(buffer_model_cond) - 1):
+            #x = x - (buffer_model_uncond[iteration] - buffer_model_cond[iteration]) / (buffer_model_dt[iteration + 1] / buffer_model_dt[iteration])
+            x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
+            #denoised = model(x, sigmas[i + 1] * s_in, **extra_args)
+            ba = x - buffer_model_cond[iteration]
+            ca = x_step - buffer_model_cond[iteration]
+            alpha = (ba * ca) / (ba ** 2 + 1e-8)
+            x = (1 - alpha)*buffer_model_cond[iteration] + alpha*x
+
+        if len(buffer_model_cond) == max(order - 1, 1):
+            for k in range(order - 2):
+                buffer_model_cond[k] = buffer_model_cond[k+1]
+                buffer_model_uncond[k] = buffer_model_uncond[k+1]
+                buffer_model_dt[k] = buffer_model_dt[k+1]
+            buffer_model_cond[-1] = denoised.detach()
+            buffer_model_uncond[-1] = temp_uncond[0].detach()
+            buffer_model_dt[-1] = dt.detach()
+        else:
+            buffer_model_cond.append(denoised.detach())
+            buffer_model_uncond.append(temp_uncond[0].detach())
+            buffer_model_dt.append(dt.detach())
+        #if old_uncond is not None and old_cond is not None and order >= 2:
+        #    x = x + (old_cond - old_uncond) / (old_dt / dt)
+        #if old_uncond_2 is not None and old_cond_2 is not None and order >= 3:
+        #    x = x + (old_cond_2 - old_uncond_2) / (old_dt_2 / old_dt) / (old_dt / dt)
         if sigmas[i + 1] > 0:
-            x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigmas[i + 1]
-        old_uncond, old_uncond_2 = temp[0], old_uncond
-        old_cond, old_cond_2 = temp_cond[0], old_cond
-        old_dt, old_dt_2 = dt, old_dt
+            x = x + noise_sampler(sigmas[i], sigmas[i + 1]) * s_noise * sigma_up
+        #old_uncond, old_uncond_2 = temp[0], old_uncond
+        #old_cond, old_cond_2 = temp_cond[0], old_cond
+        #old_dt, old_dt_2 = dt, old_dt
     return x
 
 @torch.no_grad()
-def sample_STRIKE(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., noise_sampler_type="brownian", noise_sampler=None, order=3):
+def sample_SHIDS(model, x, sigmas, extra_args=None, callback=None, disable=None, eta=1., s_noise=1., noise_sampler_type="gaussian", noise_sampler=None, order=16):
     if len(sigmas) <= 1:
         return x
     noise_sampler, extra_args = check_set_immiscible(x, noise_sampler_type, extra_args)
-    return sampler_STRIKE(model, x, sigmas, extra_args=extra_args, callback=callback, disable=disable, eta=eta, s_noise=s_noise, noise_sampler=noise_sampler if noise_sampler is not None else get_noise_sampler(x, sigmas, noise_sampler_type, noise_sampler, extra_args), order=order)
+    return sampler_SHIDS(model, x, sigmas, extra_args=extra_args, callback=callback, disable=disable, eta=eta, s_noise=s_noise, noise_sampler=noise_sampler if noise_sampler is not None else get_noise_sampler(x, sigmas, noise_sampler_type, noise_sampler, extra_args), order=order)
 
 # Add your personal samplers below here, just for formatting purposes ;3
 
@@ -1530,7 +1564,7 @@ extra_samplers = {
     "supreme": sample_supreme,
     "sens": sample_sens,
     "ipndm_vapp": sample_ipndm_vapp,
-    "euler_clybtune": sample_euler_clybtune,
+    "SHIDS": sample_SHIDS,
 }
 
 discard_penultimate_sigma_samplers = set((
