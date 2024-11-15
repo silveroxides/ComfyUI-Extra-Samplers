@@ -238,6 +238,8 @@ class SamplerSHIDS:
                      "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
                      "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
                      "order": ("INT", {"default": 16, "min": 1, "max": 100, "step":1}),
+                     "eta_order": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "solver_method": (["weighted_projection", "qr_decomposition", "svd_lowrank", "svd"], {"default": "weighted_projection"}),
                       }
                }
     RETURN_TYPES = ("SAMPLER",)
@@ -245,18 +247,149 @@ class SamplerSHIDS:
 
     FUNCTION = "get_sampler"
 
-    def get_sampler(self, noise_sampler_type, eta, s_noise, order):
-        sampler = comfy.samplers.ksampler("SHIDS", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "order": order})
+    def get_sampler(self, noise_sampler_type, eta, s_noise, order, eta_order, solver_method):
+        sampler = comfy.samplers.ksampler("SHIDS", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "order": order, "eta_order": eta_order, "solver_method": solver_method})
+        return (sampler, )
+
+# EMA DPM++ 2M SDE (Compass Optimizer-like implementation)
+class SamplerDPMPP_2M_SDE_EMA:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="brownian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "amp_fac": ("FLOAT", {"default": 2.0, "min": -100.0, "max": 100.0, "step":0.01}),
+                     "beta1": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "beta2": ("FLOAT", {"default": 0.95, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "weight_decay": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "centralization": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step":0.01}),
+                     "normalization": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, amp_fac, beta1, beta2, weight_decay, centralization, normalization):
+        sampler = comfy.samplers.ksampler("dpmpp_2m_sde_ema", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "amp_fac": amp_fac, "beta1": beta1, "beta2": beta2, "weight_decay": weight_decay, "centralization": centralization, "normalization": normalization})
+        return (sampler, )
+
+class SamplerEuler_3EMA:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "amp_fac": ("FLOAT", {"default": 2.0, "min": -100.0, "max": 100, "step":0.01}),
+                     "smoothing_fac": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "ema_fac": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "beta": ("FLOAT", {"default": 0.9, "min": 0.0, "max": 0.999, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, amp_fac, smoothing_fac, ema_fac, beta):
+        sampler = comfy.samplers.ksampler("euler_3ema", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "amp_fac": amp_fac, "smoothing_fac": smoothing_fac, "ema_fac": ema_fac, "beta": beta})
+        return (sampler, )
+
+class SamplerScope:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "amp_fac": ("FLOAT", {"default": 2.0, "min": -100.0, "max": 100, "step":0.01}),
+                     "smoothing_fac": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "ema_fac": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 0.999, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, amp_fac, smoothing_fac, ema_fac):
+        sampler = comfy.samplers.ksampler("scope", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "amp_fac": amp_fac, "smoothing_fac": smoothing_fac, "ema_fac": ema_fac})
+        return (sampler, )
+
+class SamplerBiScope:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "amp_fac": ("FLOAT", {"default": 2.0, "min": -100.0, "max": 100, "step":0.01}),
+                     "local_smoothing_fac": ("INT", {"default": 4, "min": 1, "max": 100, "step":1}),
+                     "smoothing_fac": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 0.999, "step":0.01}),
+                     "ema_fac": ("FLOAT", {"default": 0.75, "min": 0.0, "max": 0.999, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, s_noise, amp_fac, local_smoothing_fac, smoothing_fac, ema_fac):
+        sampler = comfy.samplers.ksampler("biscope", {"noise_sampler_type": noise_sampler_type, "eta": eta, "s_noise": s_noise, "amp_fac": amp_fac, "local_smoothing_fac": local_smoothing_fac, "smoothing_fac": smoothing_fac, "ema_fac": ema_fac})
+        return (sampler, )
+
+class SamplerEuler_G:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "g_eta": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step":0.01}),
+                     "sigma": ("FLOAT", {"default": 1, "min": 0.01, "max": 100.0, "step":0.01}),
+                     "order": ("INT", {"default": 3, "min": 3, "max": 100, "step":1}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, eta, g_eta, sigma, order, s_noise):
+        sampler = comfy.samplers.ksampler("euler_g", {"noise_sampler_type": noise_sampler_type, "eta": eta, "g_eta": g_eta, "sigma": sigma, "order": order, "s_noise": s_noise})
+        return (sampler, )
+
+class SamplerLeaping_Euler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"noise_sampler_type": (get_noise_sampler_names(default="gaussian"), ),
+                     "leap": ("INT", {"default": 1, "min": 1, "max": 8, "step":1}),
+                     "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.01}),
+                     "s_noise": ("FLOAT", {"default": 1, "min": 0.0, "max": 100.0, "step":0.01}),
+                      }
+               }
+    RETURN_TYPES = ("SAMPLER",)
+    CATEGORY = "sampling/custom_sampling/samplers"
+
+    FUNCTION = "get_sampler"
+
+    def get_sampler(self, noise_sampler_type, leap, eta, s_noise):
+        sampler = comfy.samplers.ksampler("leaping_euler", {"noise_sampler_type": noise_sampler_type, "leap": leap, "eta": eta, "s_noise": s_noise})
         return (sampler, )
 
 ### Noise
 
 class Noise_ImmiscibleNoise:
-    def __init__(self, noise_type, seed, image_scaling, latent_image):
+    def __init__(self, noise_type, seed, image_scaling, latent_image, n_latents = 1024):
         self.noise_type = noise_type
         self.seed = seed
         self.image_scaling = image_scaling
         self.latent_image = latent_image
+        self.n_latents = n_latents
 
     def generate_noise(self, input_latent):
         latent_image = input_latent["samples"]
@@ -264,7 +397,7 @@ class Noise_ImmiscibleNoise:
         generator = torch.manual_seed(self.seed)
         if batch_inds is None:
             gauss = torch.randn_like(latent_image)
-            noise = make_immiscible(noise_func=self.noise_type)(latent_image if self.latent_image is None else self.latent_image["samples"])
+            noise = make_immiscible(noise_func=self.noise_type, immiscible_latents=self.n_latents)(latent_image if self.latent_image is None else self.latent_image["samples"])
             noise = gauss * (1.0 - self.image_scaling) + noise * self.image_scaling
             return noise
             #return torch.randn(latent_image.size(), dtype=latent_image.dtype, layout=latent_image.layout, generator=generator, device="cpu")
@@ -273,7 +406,7 @@ class Noise_ImmiscibleNoise:
         noises = []
         for i in range(unique_inds[-1]+1):
             gauss = torch.randn_like(latent_image)
-            noise = make_immiscible(noise_func=self.noise_type)(latent_image if self.latent_image is None else self.latent_image["samples"])
+            noise = make_immiscible(noise_func=self.noise_type, immiscible_latents=self.n_latents)(latent_image if self.latent_image is None else self.latent_image["samples"])
             noise = gauss * (1.0 - self.image_scaling) + noise * self.image_scaling
             if i in unique_inds:
                 noises.append(noise)
@@ -288,6 +421,7 @@ class ImmiscibleNoise(DisableNoise):
         return {"required":
                     {
                     "noise_type": (get_immiscible_noise_sampler_names(), ),
+                    "n_latents": ("INT", {"default": 1024, "min": 1, "max": 16384, "step":1}),
                     "noise_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                     },
                 "optional":
@@ -297,8 +431,8 @@ class ImmiscibleNoise(DisableNoise):
                     }
                 }
 
-    def get_noise(self, noise_type, noise_seed, image_scaling, latent_image):
-        return (Noise_ImmiscibleNoise(noise_type, noise_seed, image_scaling, latent_image),)
+    def get_noise(self, noise_type, n_latents, noise_seed, image_scaling, latent_image):
+        return (Noise_ImmiscibleNoise(noise_type, noise_seed, image_scaling, latent_image, n_latents),)
 
 ### Schedulers
 from .extra_samplers import get_sigmas_simple_exponential
@@ -1057,4 +1191,97 @@ class MegaCFGGuider:
         if perphist != 0:
             guider.set_perphist_params(perphist)
             m.set_model_sampler_post_cfg_function(guider.post_cfg_perphist)
+        return (guider,)
+
+class Guider_APG(comfy.samplers.CFGGuider):    
+    class MomentumBuffer:
+        def __init__(self, momentum: float):
+            self.momentum = momentum
+            self.running_average = 0
+        def reset(self):
+            self.running_average = 0
+        def update(self, update_value: torch.Tensor):
+            new_average = self.momentum * self.running_average
+            self.running_average = update_value + new_average
+    
+    def project(self, v0: torch.Tensor, v1: torch.Tensor):
+        dtype = v0.dtype
+        v0, v1 = v0.double(), v1.double()
+        v1 = torch.nn.functional.normalize(v1, dim=[-3, -2, -1])
+        v0_parallel = (v0 * v1).sum(dim=[-3, -2, -1], keepdim=True) * v1
+        v0_orthogonal = v0 - v0_parallel
+        return v0_parallel.to(dtype), v0_orthogonal.to(dtype)
+
+    def set_cfg(self, cfg_scale, apg_scale, eta, norm_threshold, momentum_buffer):
+        self.cfg_scale = cfg_scale
+        self.apg_scale = apg_scale
+        self.eta = eta
+        self.norm_threshold = norm_threshold
+        self.momentum_buffer = momentum_buffer
+        
+        self.curr_timestep = 1.
+
+    def set_conds(self, positive, negative):
+        self.inner_set_conds({"positive": positive, "negative": negative})
+
+    def normalized_guidance(self, pred_cond: torch.Tensor, pred_uncond: torch.Tensor, guidance_scale: float, cfg: torch.Tensor = None, momentum_buffer: MomentumBuffer = None, eta: float = 1.0, norm_threshold: float = 0.0):
+        diff = pred_cond - pred_uncond
+
+        if momentum_buffer is not None:
+            momentum_buffer.update(diff)
+            diff = momentum_buffer.running_average
+        if norm_threshold > 0:
+            ones = torch.ones_like(diff)
+            diff_norm = diff.norm(p=2, dim=[-3, -2, -1], keepdim=True)
+            scale_factor = torch.minimum(ones, norm_threshold / diff_norm)
+            diff = diff * scale_factor
+        diff_parallel, diff_orthogonal = self.project(diff, pred_cond)
+        normalized_update = diff_orthogonal + eta * diff_parallel
+        if cfg is None:
+            cfg = pred_cond
+        pred_guided = cfg + (guidance_scale - 1) * normalized_update
+        return pred_guided
+
+    def predict_noise(self, x, timestep, model_options={}, seed=None):
+        negative = self.conds.get("negative", None)
+        positive_cond = self.conds.get("positive", None)
+
+        # Weird way to workaround momentum buffer sticking from run to run, this should automatically reset it in a majority of cases.
+        if timestep > (self.curr_timestep - 1e-6):
+            self.momentum_buffer.reset()
+        self.curr_timestep = timestep
+
+        out = comfy.samplers.calc_cond_batch(self.inner_model, [negative, positive_cond], x, timestep, model_options)
+
+        cfg = comfy.samplers.cfg_function(self.inner_model, out[1], out[0], self.cfg_scale, x, timestep, model_options=model_options, cond=positive_cond, uncond=negative)
+
+        apg = self.normalized_guidance(out[1], out[0], self.apg_scale, cfg, self.momentum_buffer, self.eta, self.norm_threshold)
+
+        return apg
+
+class APGGuider:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"model": ("MODEL",),
+                    "positive": ("CONDITIONING", ),
+                    "negative": ("CONDITIONING", ),
+                    "cfg_scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
+                    "apg_scale": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
+                    "eta": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
+                    "norm_threshold": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 100.0, "step":0.1, "round": 0.01}),
+                    "momentum": ("FLOAT", {"default": -0.5, "min": -100.0, "max": 100.0, "step":0.1, "round": 0.01, "lazy": False}),
+                     }
+                }
+
+    RETURN_TYPES = ("GUIDER",)
+
+    FUNCTION = "get_guider"
+    CATEGORY = "sampling/custom_sampling/guiders"
+
+    def get_guider(self, model, positive, negative, cfg_scale, apg_scale, eta, norm_threshold, momentum):
+        guider = Guider_APG(model)
+        guider.set_conds(positive, negative) # Conds
+        momentum_buffer = guider.MomentumBuffer(momentum)
+        guider.set_cfg(cfg_scale, apg_scale, eta, norm_threshold, momentum_buffer) # Strengths
         return (guider,)

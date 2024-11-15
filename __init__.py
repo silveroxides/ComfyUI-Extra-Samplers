@@ -15,6 +15,7 @@ NODE_CLASS_MAPPINGS = {
     "ScaledCFGGuider": nodes.ScaledCFGGuider,
     "WarmupDecayCFGGuider": nodes.WarmupDecayCFGGuider,
     "MegaCFGGuider": nodes.MegaCFGGuider,
+    "APGGuider": nodes.APGGuider,
     ### Noise
     "ImmiscibleNoise": nodes.ImmiscibleNoise,
     ## Samplers
@@ -29,6 +30,10 @@ NODE_CLASS_MAPPINGS = {
     "SamplerSENS": nodes.SamplerSENS,
     "SamplerIPNDM_VAPP": nodes.SamplerIPNDM_VAPP,
     "SamplerSHIDS": nodes.SamplerSHIDS,
+    "SamplerDPMPP_2M_SDE_EMA": nodes.SamplerDPMPP_2M_SDE_EMA,
+    "SamplerBiScope": nodes.SamplerBiScope,
+    "SamplerEuler_G": nodes.SamplerEuler_G,
+    "SamplerLeaping_Euler": nodes.SamplerLeaping_Euler,
     ### Schedulers
     "SimpleExponentialScheduler": nodes.SimpleExponentialScheduler,
     "KLOptimalScheduler": nodes.KLOptimalScheduler,
